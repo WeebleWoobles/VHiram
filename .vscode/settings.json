@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "i2c.h": "c",
+        "pinout.h": "c",
+        "IMU.C": "cpp",
+        "init.h": "c",
+        "i2c_master.h": "c",
+        "imu.h": "c",
+        "freertos.h": "c",
+        "ledc.h": "c"
+    }
+}
