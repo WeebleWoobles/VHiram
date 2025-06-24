@@ -1,5 +1,6 @@
 #include "init.h"
 #include "main.h"
+#include "ESP8266_interface.h"
 // RTOS TASKS
 
 #include "driver/i2c.h"
@@ -34,6 +35,14 @@ void scan_i2c(void) {
 void app_main() {
 
     init_main();
+
+    // Initialize ESP-NOW for wireless communication
+    esp_err_t ret = esp_now_init_interface();
+    if (ret != ESP_OK) {
+        printf("Failed to initialize ESP-NOW: %s\n", esp_err_to_name(ret));
+    } else {
+        printf("ESP-NOW initialized successfully\n");
+    }
 
     uint8_t raw[14] = {0};
     bool ok = IMU_ReadBytes(0x3B, raw, 14);
@@ -103,6 +112,30 @@ void main_control(void* pvParameters) {
     double dt_in_s = control_time / 1000;
     while(1){
         //Step 0: get duration of time from last check
+        
+        // Check for joystick input from ESP-NOW
+        joystick_data_t joystick = get_joystick_data();
+        if (joystick.data_received) {
+            // Process joystick input here
+            // You can modify the setpoint or control behavior based on joystick input
+            if (joystick.forward) {
+                // Adjust setpoint for forward movement
+                printf("Forward command received\n");
+            }
+            if (joystick.backward) {
+                // Adjust setpoint for backward movement
+                printf("Backward command received\n");
+            }
+            if (joystick.left) {
+                // Adjust for left turn
+                printf("Left command received\n");
+            }
+            if (joystick.right) {
+                // Adjust for right turn
+                printf("Right command received\n");
+            }
+            clear_joystick_data_flag();
+        }
         
         //Step 1: get pitch datafrom IMU and PID
         pitch = PID_get_pitch(pitch ,dt_in_s);

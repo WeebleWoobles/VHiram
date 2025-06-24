@@ -7,6 +7,8 @@
         "i2c_master.h": "c",
         "imu.h": "c",
         "freertos.h": "c",
-        "ledc.h": "c"
+        "ledc.h": "c",
+        "esp_wifi.h": "c",
+        "esp8266_interface.h": "c"
     }
 }
