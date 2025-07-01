@@ -1,6 +1,8 @@
 #include "init.h"
 #include "main.h"
 #include "ESP8266_interface.h"
+#include "timing_test.h"
+
 // RTOS TASKS
 
 #include "driver/i2c.h"
@@ -86,6 +88,8 @@ void app_main() {
     xTaskCreate(print_values, "Print Values Task", 2048, NULL, 5, NULL);
     xTaskCreate(main_control,"PID Test task", 4096, setpter, 5, NULL);
     xTaskCreate(led_task,"LED task", 1024, NULL, 5, NULL);
+    xTaskCreate(timing_test_task, "TimingTestTask", 4096, &setpoint, 5, NULL);
+
 }
 
 void led_task(void* pvParameters){
