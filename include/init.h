@@ -17,7 +17,7 @@ void init_main(void);
 #define I2C_MASTER_SCL_IO    ??       // replace with actual SCL pin
 #define I2C_MASTER_SDA_IO    ??      // replace with actual SDA pin
 #define I2C_MASTER_NUM       I2C_NUM_0
-#define I2C_MASTER_FREQ_HZ   400000   // Boosted to 400kHz
+#define I2C_MASTER_FREQ_HZ   400000   // functions at 400kHz
 
 
 void init_gpio(void);
