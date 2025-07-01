@@ -38,6 +38,8 @@ void app_main() {
 
     init_main();
 
+    init_I2C();  //  dded minimal I2C init here for teh speed boost
+
     // Initialize ESP-NOW for wireless communication
     esp_err_t ret = esp_now_init_interface();
     if (ret != ESP_OK) {
@@ -49,19 +51,18 @@ void app_main() {
     uint8_t raw[14] = {0};
     bool ok = IMU_ReadBytes(0x3B, raw, 14);
     if (!ok) {
-    printf("Failed to read IMU data\n");
+        printf("Failed to read IMU data\n");
     } else {
-    printf("Raw Accel/Gyro: ");
-    for (int i = 0; i < 14; i++) {
-        printf("%02X ", raw[i]);
+        printf("Raw Accel/Gyro: ");
+        for (int i = 0; i < 14; i++) {
+            printf("%02X ", raw[i]);
+        }
+        printf("\n");
     }
-    printf("\n");
-}
 
-    // Setpoint is initialized to 0, but is a pointer because bluetooth with edit this. 
+    // Setpoint is initialized to 0, but is a pointer because bluetooth will edit this.
     float setpoint = 0.0f;
     float* setpter = &setpoint;
-
 
     //MOTOR TEST:
     // while(1){
@@ -82,7 +83,6 @@ void app_main() {
     //     printf("motor backward\n");
     //     vTaskDelay(pdMS_TO_TICKS(5000));
     // }
-
 
     //TEST RTOS AND PID CONTROLLING MOTORS
     xTaskCreate(print_values, "Print Values Task", 2048, NULL, 5, NULL);
@@ -141,7 +141,7 @@ void main_control(void* pvParameters) {
             clear_joystick_data_flag();
         }
         
-        //Step 1: get pitch datafrom IMU and PID
+        //Step 1: get pitch data from IMU and PID
         pitch = PID_get_pitch(pitch ,dt_in_s);
         //Pitch will average out, Need perfect level surface to really calibrate
         
