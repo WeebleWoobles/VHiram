@@ -1,4 +1,3 @@
-init.h
 #pragma once
 #include "main.h"
 
@@ -22,7 +21,7 @@ void init_pwm(void);
 /****************
  *I2C DEFFINITIONS
  *****************/
-#include "driver/i2c.h"
+
 #include "IMU.h"
 void init_I2C(void);
 
