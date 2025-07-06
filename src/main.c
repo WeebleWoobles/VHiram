@@ -4,10 +4,10 @@
 #include "driver/i2c.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "timing_test.h"
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
-
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "nvs_flash.h"   
@@ -121,4 +121,6 @@ void app_main() {
     xTaskCreate(print_values, "PrintValues", 2048, NULL, 5, NULL);
     xTaskCreate(main_control, "MainControl", 4096, &setpoint, 5, NULL);
     xTaskCreate(led_task, "LEDTask", 1024, NULL, 5, NULL);
+    xTaskCreate(timing_test_task, "timing_test", 4096, &setpoint, 5, NULL); // Changed to &setpoint
+
 }
