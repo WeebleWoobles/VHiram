@@ -20,7 +20,7 @@ extern bool IMU_ReadBytes(uint8_t reg_addr, uint8_t* data, uint16_t length);
 
 #define DERIVATIVE_FILTER_ALPHA 0.7f
 
-float pitch = 0.0f;
+extern float pitch;
 float pid_output = 0.0f;
 
 void scan_i2c(void) {
