@@ -1,23 +1,30 @@
 #include "IMU.h"
 #include "main.h"
-#include "driver/i2c.h" // Required for I2C_NUM_0
+#include "driver/i2c.h"
+#include <math.h>
 
-// Use the correct I2C port number definition from ESP-IDF
+// Define I2C settings if not already defined
 #ifndef I2C_NUM_0
 #define I2C_NUM_0 ((i2c_port_t)0)
 #endif
 
-// keeps track of imu status
+#define I2C_MASTER_SCL_IO GPIO_NUM_22
+#define I2C_MASTER_SDA_IO GPIO_NUM_21
+#define I2C_MASTER_FREQ_HZ 100000
+
+// IMU connection flag
 static bool is_initialized = false;
 
-float offset_accel_x = 0.0;
-float offset_accel_y = 0.0;
-float offset_accel_z = 0.0;
-float offset_gyro_x = 0.0;
-float offset_gyro_y = 0.0;
-float offset_gyro_z = 0.0;
-float offset_pitch = 0.0;
-// Forward declarations for internal helpers
+// Calibration offsets
+float offset_accel_x = 0.0f;
+float offset_accel_y = 0.0f;
+float offset_accel_z = 0.0f;
+float offset_gyro_x = 0.0f;
+float offset_gyro_y = 0.0f;
+float offset_gyro_z = 0.0f;
+float offset_pitch = 0.0f;
+
+// Forward declarations
 bool IMU_WriteByte(uint8_t reg, uint8_t data);
 
 bool IMU_Init(void)
@@ -30,43 +37,59 @@ bool IMU_Init(void)
         .scl_io_num = I2C_MASTER_SCL_IO,
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = I2C_MASTER_FREQ_HZ
+        .master.clk_speed = I2C_MASTER_FREQ_HZ,
     };
-    esp_err_t ret = i2c_param_config(0, &conf);
-    if (ret != ESP_OK) return false;
-    ret = i2c_driver_install(0, conf.mode, 0, 0, 0);
+
+    esp_err_t ret = i2c_param_config(I2C_NUM_0, &conf);
     if (ret != ESP_OK) return false;
 
-    // wake up imu by clearing sleep bit
-    is_initialized = true;
-    IMU_WriteByte(0x6B, 0x00);  // Clear sleep mode
+    ret = i2c_driver_install(I2C_NUM_0, conf.mode, 0, 0, 0);
+    if (ret != ESP_OK) return false;
+
+    // Wake up IMU
+    if (!IMU_WriteByte(0x6B, 0x00)) return false;
     IMU_Delay(100);
 
-    // OPTIONAL: Set clock source for stability
-    IMU_WriteByte(0x6B, 0x01);  // Use PLL with X axis gyroscope
+    // Set clock source
+    if (!IMU_WriteByte(0x6B, 0x01)) return false;
     IMU_Delay(10);
 
-    // Enable all sensors (accel, gyro)
-    IMU_WriteByte(0x6C, 0x00);  // Power Management 2
+    // Enable all sensors
+    if (!IMU_WriteByte(0x6C, 0x00)) return false;
     IMU_Delay(10);
 
-    uint8_t whoami = 0x00;
+    // Set Gyroscope Full Scale to ±2000 dps
+    if (!IMU_WriteByte(0x1B, 0x18)) return false;
+    IMU_Delay(10);
+
+    // Set Accelerometer Full Scale to ±16g
+    if (!IMU_WriteByte(0x1C, 0x18)) return false;
+    IMU_Delay(10);
+
+    // Disable DLPF for max bandwidth
+    if (!IMU_WriteByte(0x1A, 0x00)) return false;
+    IMU_Delay(10);
+
+    // Max sample rate (divider = 0)
+    if (!IMU_WriteByte(0x19, 0x00)) return false;
+    IMU_Delay(10);
+
+    uint8_t whoami = 0;
     if (!IMU_ReadByte(0x75, &whoami)) {
-        printf("Failed to read WHO_AM_I\n");
         return false;
     }
-    printf("WHO_AM_I = 0x%02X\n", whoami);
 
-        is_initialized = true;
-        return true;
-    }
+    is_initialized = true;
+    return true;
+}
 
-// grabs data from imu
 bool IMU_ReadData(IMU_Data_t* data)
 {
     if (!is_initialized || data == NULL) return false;
+
     uint8_t raw_data[14];
     if (!IMU_ReadBytes(IMU_REG_ACCEL_XOUT_H, raw_data, 14)) return false;
+
     data->accel_x = (int16_t)((raw_data[0] << 8) | raw_data[1]) / 16384.0f;
     data->accel_y = (int16_t)((raw_data[2] << 8) | raw_data[3]) / 16384.0f;
     data->accel_z = (int16_t)((raw_data[4] << 8) | raw_data[5]) / 16384.0f;
@@ -74,41 +97,53 @@ bool IMU_ReadData(IMU_Data_t* data)
     data->gyro_x = (int16_t)((raw_data[8] << 8) | raw_data[9]) / 131.0f;
     data->gyro_y = (int16_t)((raw_data[10] << 8) | raw_data[11]) / 131.0f;
     data->gyro_z = (int16_t)((raw_data[12] << 8) | raw_data[13]) / 131.0f;
+
     IMU_ConvertData(data);
+
+    float pitch = atan2f(data->accel_x, sqrtf(data->accel_y * data->accel_y + data->accel_z * data->accel_z)) * (180.0f / M_PI);
+
+    if (pitch > 5.0f) {
+        // printf("Tilting FORWARD: %.2f\u00b0\n", pitch);
+    } else if (pitch < -5.0f) {
+        // printf("Tilting BACKWARD: %.2f\u00b0\n", pitch);
+    } else {
+        // printf("UPRIGHT: %.2f\u00b0\n", pitch);
+    }
+
     return true;
 }
 
-// turns raw imu numbers into real units
 void IMU_ConvertData(IMU_Data_t* data)
 {
-    // Data already converted in IMU_ReadData, nothing to do here
     (void)data;
 }
 
-// tweaks the imu so fully calibrated
 bool IMU_Calibrate(void)
 {
     if (!is_initialized) return false;
-    // simple calibration, average a few readings
+
     IMU_Data_t sum = {0};
-    double pitch_sum = 0;
-    for (int i = 0; i < 100; i++)
-    {
+    double pitch_sum = 0.0;
+
+    for (int i = 0; i < 100; i++) {
         IMU_Data_t temp;
         if (!IMU_ReadData(&temp)) return false;
+
         sum.accel_x += temp.accel_x;
         sum.accel_y += temp.accel_y;
         sum.accel_z += temp.accel_z;
         sum.gyro_x += temp.gyro_x;
         sum.gyro_y += temp.gyro_y;
         sum.gyro_z += temp.gyro_z;
-        pitch_sum += atan2f(temp.accel_y, sqrtf(temp.accel_x*temp.accel_x + temp.accel_z*temp.accel_z)) * (180 / M_PI);
+
+        pitch_sum += atan2f(temp.accel_y, sqrtf(temp.accel_x * temp.accel_x + temp.accel_z * temp.accel_z)) * (180.0f / M_PI);
+
         IMU_Delay(10);
     }
-    // apply offsets (basic averaging) - not implemented
+
     offset_accel_x = sum.accel_x / 100.0f;
     offset_accel_y = sum.accel_y / 100.0f;
-    offset_accel_z = (sum.accel_z / 100.0f) - 1.0f; // Subtract 1g gravity
+    offset_accel_z = (sum.accel_z / 100.0f) - 1.0f;
 
     offset_gyro_x = sum.gyro_x / 100.0f;
     offset_gyro_y = sum.gyro_y / 100.0f;
@@ -116,22 +151,18 @@ bool IMU_Calibrate(void)
 
     offset_pitch = pitch_sum / 100.0f;
 
-    printf("Here are the values of the offsets\n Accel_x: %.1f, Accel_y: %.1f, Accel_z: %.1f, Gyro_x: %.1f, Gyro_y = %.1f, Gyro_z = %.1f \nPitch Offset = %.1f",
-        offset_accel_x, offset_accel_y, offset_accel_z, offset_gyro_x, offset_gyro_y, offset_gyro_z, offset_pitch);
-
     IMU_Delay(10);
     return true;
 }
 
-// checks if the imus awake
 bool IMU_IsConnected(void)
 {
     if (!is_initialized) return false;
-    uint8_t data;
+
+    uint8_t data = 0;
     return IMU_ReadByte(IMU_REG_PWR_MGMT_1, &data);
 }
 
-// pulls the temp from the imu
 float IMU_ReadTemperature(void)
 {
     IMU_Data_t data;
@@ -139,99 +170,92 @@ float IMU_ReadTemperature(void)
     return data.temperature;
 }
 
-// grabs the accel data from the imu
 bool IMU_ReadAccelerometer(float* accel_x, float* accel_y, float* accel_z)
 {
     if (!is_initialized || accel_x == NULL || accel_y == NULL || accel_z == NULL) return false;
+
     IMU_Data_t data;
     if (!IMU_ReadData(&data)) return false;
+
     *accel_x = data.accel_x;
     *accel_y = data.accel_y;
     *accel_z = data.accel_z;
     return true;
 }
 
-// grabs the gyro data from the imu
 bool IMU_ReadGyroscope(float* gyro_x, float* gyro_y, float* gyro_z)
 {
     if (!is_initialized || gyro_x == NULL || gyro_y == NULL || gyro_z == NULL) return false;
+
     IMU_Data_t data;
     if (!IMU_ReadData(&data)) return false;
+
     *gyro_x = data.gyro_x;
     *gyro_y = data.gyro_y;
     *gyro_z = data.gyro_z;
     return true;
 }
 
-// pulls raw data off imu
 bool IMU_ReadRawData(uint8_t* raw_data)
 {
     if (!is_initialized || raw_data == NULL) return false;
     return IMU_ReadBytes(IMU_REG_ACCEL_XOUT_H, raw_data, 14);
 }
 
-// sends some data to the imu
 bool IMU_WriteData(uint8_t reg, uint8_t data)
 {
     if (!is_initialized) return false;
+
     uint8_t buf[2] = {reg, data};
     esp_err_t ret = i2c_master_write_to_device(I2C_NUM_0, IMU_I2C_ADDRESS, buf, 2, pdMS_TO_TICKS(100));
     return (ret == ESP_OK);
 }
 
-// reads one byte from the imu
 bool IMU_ReadByte(uint8_t reg, uint8_t* data)
 {
     if (!is_initialized || data == NULL) return false;
+
     esp_err_t ret = i2c_master_write_read_device(I2C_NUM_0, IMU_I2C_ADDRESS, &reg, 1, data, 1, pdMS_TO_TICKS(100));
-    if (ret != ESP_OK) {
-    printf("I2C ReadByte error: %s\n", esp_err_to_name(ret));
-    }
     return (ret == ESP_OK);
 }
 
-// grabs a bunch of bytes from the imu
 bool IMU_ReadBytes(uint8_t reg, uint8_t* data, uint16_t length)
 {
     if (!is_initialized || data == NULL) return false;
+
     esp_err_t ret = i2c_master_write_read_device(I2C_NUM_0, IMU_I2C_ADDRESS, &reg, 1, data, length, pdMS_TO_TICKS(100));
-    if (ret != ESP_OK) {
-    printf("I2C ReadByte error: %s\n", esp_err_to_name(ret));
-    }
     return (ret == ESP_OK);
 }
 
-// writes one byte to the imu (wrapper for IMU_WriteData)
 bool IMU_WriteByte(uint8_t reg, uint8_t data)
 {
     return IMU_WriteData(reg, data);
 }
 
-// sends a bunch of bytes to the imu
 bool IMU_WriteBytes(uint8_t reg, const uint8_t* data, uint16_t length)
 {
     if (!is_initialized || data == NULL) return false;
+
     uint8_t buf[1 + length];
     buf[0] = reg;
     for (uint16_t i = 0; i < length; i++) {
         buf[i + 1] = data[i];
     }
-    esp_err_t ret = i2c_master_write_to_device(0, IMU_I2C_ADDRESS, buf, length + 1, pdMS_TO_TICKS(100));
+
+    esp_err_t ret = i2c_master_write_to_device(I2C_NUM_0, IMU_I2C_ADDRESS, buf, length + 1, pdMS_TO_TICKS(100));
     return (ret == ESP_OK);
 }
 
-// delay
 void IMU_Delay(uint32_t ms)
 {
     vTaskDelay(pdMS_TO_TICKS(ms));
 }
 
-// hits the reset button on the imu
 bool IMU_Reset(void)
 {
     if (!is_initialized) return false;
-    uint8_t data = 0x80; // reset bit
-    if (!IMU_WriteByte(IMU_REG_PWR_MGMT_1, data)) return false;
+
+    if (!IMU_WriteByte(IMU_REG_PWR_MGMT_1, 0x80)) return false;
     IMU_Delay(100);
     return true;
 }
